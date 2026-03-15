@@ -4,11 +4,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // YOUR FAMILY — edit names/avatars/colors
 // ═══════════════════════════════════════════════════════════════
 const FAMILY = [
-  { id: "todd", name: "Todd", avatar: "👨🏻", color: "#c9a84c" },
-  { id: "ilina", name: "Ilina", avatar: "👩🏾", color: "#b07cc3" },
-  { id: "neal", name: "Neal", avatar: "👨🏽", color: "#4ab8a9" },
-  { id: "carter", name: "Carter", avatar: "👨🏽", color: "#e0605d" },
-  { id: "rory", name: "Rory", avatar: "👩🏼", color: "#e8a44a" },
+  { id: "todd", name: "Todd", avatar: "🦡", color: "#c9a84c" },
+  { id: "ilina", name: "Ilina", avatar: "👸🏾", color: "#b07cc3" },
+  { id: "neal", name: "Neal", avatar: "🦆", color: "#4ab8a9" },
+  { id: "carter", name: "Carter", avatar: "👨🏽‍💻", color: "#e0605d" },
+  { id: "rory", name: "Rory", avatar: "🦄", color: "#e8a44a" },
 ];
 
 // ═══════════════════════════════════════════════════════════════
