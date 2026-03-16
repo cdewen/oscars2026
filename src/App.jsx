@@ -4,12 +4,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // YOUR FAMILY — edit names/avatars/colors
 // ═══════════════════════════════════════════════════════════════
 const FAMILY = [
-  { id: "todd", name: "Todd", avatar: "🦡", color: "#c9a84c" },
-  { id: "ilina", name: "Ilina", avatar: "👸🏾", color: "#b07cc3" },
-  { id: "neal", name: "Neal", avatar: "🦆", color: "#4ab8a9" },
-  { id: "carter", name: "Carter", avatar: "👨🏽‍💻", color: "#e0605d" },
-  { id: "rory", name: "Rory", avatar: "🦄", color: "#e8a44a" },
+  { id: "todd", name: "Todd", avatar: "👨🏻", color: "#c9a84c" },
+  { id: "ilina", name: "Ilina", avatar: "👩🏾", color: "#b07cc3" },
+  { id: "neal", name: "Neal", avatar: "👨🏽", color: "#4ab8a9" },
+  { id: "carter", name: "Carter", avatar: "👨🏽", color: "#e0605d" },
+  { id: "rory", name: "Rory", avatar: "👩🏼", color: "#e8a44a" },
 ];
+
+// Tiebreak priority — lower index wins ties
+const TIEBREAK_ORDER = ["todd", "ilina", "rory", "carter", "neal"];
 
 // ═══════════════════════════════════════════════════════════════
 // VOTES — fill in before the ceremony
@@ -197,6 +200,17 @@ const WIKI_CAT_MAP = {
 
 const TOTAL = CATEGORIES.length;
 
+// Helper: winners are now arrays (to support ties). Check if a pick matches any winner.
+function isPickCorrect(pick, winnersForCat) {
+  if (!winnersForCat || !pick) return false;
+  return winnersForCat.includes(pick);
+}
+
+// Helper: check if a category has been announced
+function isAnnounced(winnersForCat) {
+  return winnersForCat && winnersForCat.length > 0;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // WIKIPEDIA PARSER
 // ═══════════════════════════════════════════════════════════════
@@ -231,17 +245,18 @@ async function fetchWikipediaWinners() {
       console.log(`[${ts}] ⚠️  No <ul> found for ${appId}`);
       return;
     }
-    const li = ul.querySelector(":scope > li");
-    if (!li) return;
-    if (li.textContent.includes("\u2021") && li.querySelector(":scope > b")) {
+    const cat = CATEGORIES.find(c => c.id === appId);
+    const norm = (s) => s.toLowerCase()
+      .replace(/[\u2013\u2014\u2012\u2015—–-]/g, "-")
+      .replace(/[""''\"\']/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    // Check ALL li items for ‡ (supports ties)
+    const catWinners = [];
+    ul.querySelectorAll(":scope > li").forEach(li => {
+      if (!li.textContent.includes("\u2021") || !li.querySelector(":scope > b")) return;
       let raw = li.querySelector(":scope > b").textContent.replace(/\u2021/g, "").replace(/\s+/g, " ").trim();
-      const cat = CATEGORIES.find(c => c.id === appId);
       if (cat) {
-        const norm = (s) => s.toLowerCase()
-          .replace(/[\u2013\u2014\u2012\u2015—–-]/g, "-")
-          .replace(/[""''\"\']/g, "")
-          .replace(/\s+/g, " ")
-          .trim();
         const rawNorm = norm(raw);
         const match = cat.nominees.find(n => {
           const nNorm = norm(n);
@@ -250,15 +265,22 @@ async function fetchWikipediaWinners() {
                  rawNorm.includes(nNorm.split("-")[0].trim()) ||
                  nNorm.includes(rawNorm.split("-")[0].trim());
         });
-        winners[appId] = match || raw;
+        const resolved = match || raw;
+        catWinners.push(resolved);
         if (match) {
           console.log(`[${ts}] 🏆 ${cat.name}: "${match}"`);
         } else {
           console.log(`[${ts}] 🏆 ${cat.name}: "${raw}" (⚠️ no nominee match — using raw)`);
         }
       } else {
-        winners[appId] = raw;
+        catWinners.push(raw);
         console.log(`[${ts}] 🏆 ${appId}: "${raw}" (no category obj)`);
+      }
+    });
+    if (catWinners.length > 0) {
+      winners[appId] = catWinners;
+      if (catWinners.length > 1) {
+        console.log(`[${ts}] 🤝 TIE in ${cat?.name || appId}: ${catWinners.join(" & ")}`);
       }
     }
   });
@@ -579,34 +601,35 @@ function CategoriesView({ winners }) {
     // Announced: reverse order so most recent is first
     ...announcedIds.slice().reverse().map(id => CATEGORIES.find(c => c.id === id)).filter(Boolean),
     // Unannounced: original order
-    ...CATEGORIES.filter(c => !winners[c.id]),
+    ...CATEGORIES.filter(c => !isAnnounced(winners[c.id])),
   ];
 
   return (
     <div style={{ display: "grid", gap: 6 }}>
       {sorted.map(cat => {
-        const w = winners[cat.id];
+        const w = winners[cat.id]; // array or undefined
+        const announced = isAnnounced(w);
         return (
           <div key={cat.id} style={{
             background: "var(--card)", border: "1px solid var(--border)",
             borderRadius: 10, padding: "12px 16px",
-            borderLeft: w ? "3px solid var(--gold)" : "3px solid var(--border)",
+            borderLeft: announced ? "3px solid var(--gold)" : "3px solid var(--border)",
           }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 15 }}>{cat.emoji}</span>
                 <span style={{ fontFamily: "'Cormorant Garamond',serif", fontWeight: 700, fontSize: 15 }}>{cat.name}</span>
               </div>
-              {w && <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 8, background: "rgba(201,168,76,.12)", color: "var(--gold)", textTransform: "uppercase", letterSpacing: .5 }}>Winner</span>}
+              {announced && <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 8, background: "rgba(201,168,76,.12)", color: "var(--gold)", textTransform: "uppercase", letterSpacing: .5 }}>{w.length > 1 ? "Tie" : "Winner"}</span>}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {cat.nominees.map(n => {
-                const isWinner = w && n === w;
+                const isWinner = announced && w.includes(n);
                 return (
                   <span key={n} style={{
                     fontSize: 11, padding: "4px 10px", borderRadius: 6,
                     background: isWinner ? "rgba(201,168,76,.15)" : "var(--surface)",
-                    color: isWinner ? "var(--gold-light)" : (w ? "var(--dim)" : "var(--mid)"),
+                    color: isWinner ? "var(--gold-light)" : (announced ? "var(--dim)" : "var(--mid)"),
                     fontWeight: isWinner ? 700 : 400,
                     border: isWinner ? "1px solid rgba(201,168,76,.3)" : "1px solid transparent",
                     transition: "all .3s ease",
@@ -636,7 +659,7 @@ function PicksView({ winners }) {
         const isOpen = expanded === member.id;
         let correct = 0;
         CATEGORIES.forEach(cat => {
-          if (winners[cat.id] && VOTES[member.id]?.[cat.id] === winners[cat.id]) correct++;
+          if (isPickCorrect(VOTES[member.id]?.[cat.id], winners[cat.id])) correct++;
         });
 
         return (
@@ -675,9 +698,10 @@ function PicksView({ winners }) {
               <div style={{ padding: "0 16px 14px" }}>
                 {CATEGORIES.map(cat => {
                   const pick = VOTES[member.id]?.[cat.id];
-                  const w = winners[cat.id];
-                  const isCorrect = w && pick === w;
-                  const isWrong = w && pick !== w;
+                  const w = winners[cat.id]; // array or undefined
+                  const catAnnounced = isAnnounced(w);
+                  const isCorrect = isPickCorrect(pick, w);
+                  const isWrong = catAnnounced && !isCorrect;
 
                   return (
                     <div key={cat.id} style={{
@@ -702,7 +726,7 @@ function PicksView({ winners }) {
                         </div>
                         {isWrong && (
                           <div style={{ fontSize: 11, color: "var(--gold)", marginTop: 2 }}>
-                            🏆 {w}
+                            🏆 {w.join(" & ")}
                           </div>
                         )}
                       </div>
@@ -812,7 +836,7 @@ function RaceLane({ person, winners, announced, topScore }) {
           const isNewest = isNewDot && i === person.correct - 1;
 
           return (
-            <Tooltip key={cat.id} text={`${cat.emoji} ${cat.name} — ${winners[cat.id]}`}
+            <Tooltip key={cat.id} text={`${cat.emoji} ${cat.name} — ${(winners[cat.id] || []).join(" & ")}`}
               style={{
                 position: "absolute",
                 left: leftPx,
@@ -861,16 +885,11 @@ function RaceView({ winners }) {
 
   const raceData = FAMILY.map(m => {
     const correctCats = announcedIds
-      .filter(catId => VOTES[m.id]?.[catId] === winners[catId])
+      .filter(catId => isPickCorrect(VOTES[m.id]?.[catId], winners[catId]))
       .map(catId => CATEGORIES.find(c => c.id === catId))
       .filter(Boolean);
-    // Tiebreak: sum of 1-indexed announcement positions for each correct pick
-    // e.g. getting awards #20, #22, #24 right = 66, vs #1, #2, #3 = 6
-    const positionSum = correctCats.reduce((sum, cat) => {
-      return sum + announcedIds.indexOf(cat.id) + 1;
-    }, 0);
-    return { ...m, correct: correctCats.length, correctCats, positionSum };
-  }).sort((a, b) => b.correct - a.correct || b.positionSum - a.positionSum);
+    return { ...m, correct: correctCats.length, correctCats };
+  }).sort((a, b) => b.correct - a.correct || TIEBREAK_ORDER.indexOf(a.id) - TIEBREAK_ORDER.indexOf(b.id));
 
   const topScore = raceData[0]?.correct || 0;
 
@@ -1103,7 +1122,7 @@ export default function App() {
         const newKeys = Object.keys(w).filter(k => !prev[k]);
         console.log(`[${ts}] 🆕 NEW WINNERS DETECTED: ${newKeys.map(k => {
           const cat = CATEGORIES.find(c => c.id === k);
-          return cat ? `${cat.name}: ${w[k]}` : `${k}: ${w[k]}`;
+          return cat ? `${cat.name}: ${w[k].join(" & ")}` : `${k}: ${w[k].join(" & ")}`;
         }).join(", ")}`);
       } else if (newCount === prevCount && newCount > 0) {
         console.log(`[${ts}] ✅ No change — still ${newCount}/${TOTAL} winners`);
